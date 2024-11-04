@@ -1,10 +1,16 @@
 import type { Rules } from '@tsslint/config';
+import { loadPluginRules } from '@tsslint/eslint';
 import type * as ts from 'typescript';
 // @ts-ignore
 import * as path from 'node:path';
 
 export default {
-	rules: getDefaultRules(),
+	rules: {
+		...getDefaultRules(),
+		...await loadPluginRules({
+			'@typescript-eslint/no-unnecessary-type-assertion': 'error'
+		})
+	},
 };
 
 export function getDefaultRules(): Rules {
@@ -309,45 +315,6 @@ export function getDefaultRules(): Rules {
 							`Module '${moduleName}' should be in the dependencies.`,
 							node.getStart(sourceFile),
 							node.getEnd()
-						);
-					}
-				}
-				ts.forEachChild(node, visit);
-			});
-		},
-		/**
-		 * TODO: fix the case
-		 * let foo: Foo;
-		 * foo!.bar();
-		 * ^^^^ should not report
-		 */
-		'no-unnecessary-non-null-assertion'({ typescript: ts, sourceFile, languageService, reportWarning }) {
-			ts.forEachChild(sourceFile, function visit(node) {
-				if (ts.isNonNullExpression(node)) {
-					const typeChecker = languageService.getProgram()!.getTypeChecker();
-					const type = typeChecker.getTypeAtLocation(node.expression);
-					if (
-						typeChecker.typeToString(type, undefined, ts.TypeFormatFlags.NoTruncation)
-						=== typeChecker.typeToString(type.getNonNullableType(), undefined, ts.TypeFormatFlags.NoTruncation)
-					) {
-						reportWarning(
-							`Unnecessary non-null assertion.`,
-							node.getStart(sourceFile),
-							node.getEnd()
-						).withFix(
-							'Remove unnecessary non-null assertion',
-							() => [{
-								fileName: sourceFile.fileName,
-								textChanges: [
-									{
-										newText: '',
-										span: {
-											start: node.expression.getEnd(),
-											length: node.getEnd() - node.expression.getEnd(),
-										},
-									}
-								],
-							}]
 						);
 					}
 				}

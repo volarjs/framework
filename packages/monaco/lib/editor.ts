@@ -208,7 +208,9 @@ export function activateAutoInsertion(
 				const codeEditor = editor.getEditors().find(e => e.getModel() === model);
 				if (codeEditor && edit && model.getVersionId() === version) {
 					if (typeof edit === 'string') {
-						(codeEditor?.getContribution('snippetController2') as any)?.insert(edit);
+						codeEditor?.getContribution('snippetController2')
+							// @ts-expect-error
+							?.insert(edit);
 					}
 					else {
 						model.pushEditOperations([], [toTextEdit(edit)], () => []);

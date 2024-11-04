@@ -62,7 +62,7 @@ export class SourceMap<Data = unknown> {
 
 				const mapped = translateOffset(offset, mapping[fromRange], mapping[toRange], getLengths(mapping, fromRange), getLengths(mapping, toRange));
 				if (mapped !== undefined) {
-					yield [mapped, mapping as Mapping<Data>] as const;
+					yield [mapped, mapping] as const;
 				}
 			}
 		}

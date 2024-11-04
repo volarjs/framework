@@ -249,12 +249,12 @@ export function register(
 			if (languageServicePlugins.some(({ capabilities }) => capabilities.workspaceSymbolProvider?.resolveProvider)) {
 				serverCapabilities.workspaceSymbolProvider.resolveProvider = true;
 				server.connection.onWorkspaceSymbolResolve(async (symbol, token) => {
-					const languageServiceId = (symbol.data as any)?.languageServiceId;
+					const languageServiceId = symbol.data.languageServiceId;
 					const languageService = languageServiceById.get(languageServiceId)?.deref();
 					if (!languageService) {
 						return symbol;
 					}
-					symbol.data = (symbol.data as any)?.originalData;
+					symbol.data = symbol.data.originalData;
 					return await languageService.resolveWorkspaceSymbol?.(symbol, token);
 				});
 			}
@@ -444,7 +444,7 @@ export function register(
 					let codeActions = await languageService.getCodeActions(uri, params.range, params.context, token) ?? [];
 					for (const codeAction of codeActions) {
 						if (codeAction.data && typeof codeAction.data === 'object') {
-							(codeAction.data as any).uri = params.textDocument.uri;
+							codeAction.data.uri = params.textDocument.uri;
 						}
 						else {
 							codeAction.data = { uri: params.textDocument.uri };
