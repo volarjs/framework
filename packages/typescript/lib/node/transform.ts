@@ -219,6 +219,30 @@ export function transformTextChange(
 	return undefined;
 }
 
+export function transformNavigationTree(
+	sourceScript: SourceScript<string> | undefined,
+	language: Language<string>,
+	serviceScript: TypeScriptServiceScript,
+	textSpan: ts.NavigationTree,
+	filter: (data: CodeInformation) => boolean
+): ts.NavigationTree {
+	return {
+		...textSpan,
+		spans: textSpan.spans.map(span => {
+			const [sourceSpanFileName, sourceSpan] = transformTextSpan(sourceScript, language, serviceScript, span, filter) ?? [];
+			if (sourceSpan && sourceSpanFileName) {
+				return {
+					start: sourceSpan.start,
+					length: sourceSpan.length,
+				};
+			}
+			return span;
+		}),
+		childItems: textSpan.childItems?.map(child => transformNavigationTree(sourceScript, language, serviceScript, child, filter)),
+		nameSpan: textSpan.nameSpan ? transformTextSpan(sourceScript, language, serviceScript, textSpan.nameSpan, filter)?.[1] : undefined,
+	};
+}
+
 export function transformTextSpan(
 	sourceScript: SourceScript<string> | undefined,
 	language: Language<string>,

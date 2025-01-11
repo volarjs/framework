@@ -5,6 +5,7 @@ import {
 	isCodeActionsEnabled,
 	isCompletionEnabled,
 	isDefinitionEnabled,
+	isFoldingRangesEnabled,
 	isFormattingEnabled,
 	isHighlightEnabled,
 	isHoverEnabled,
@@ -15,6 +16,7 @@ import {
 	isRenameEnabled,
 	isSemanticTokensEnabled,
 	isSignatureHelpEnabled,
+	isSymbolsEnabled,
 	isTypeDefinitionEnabled,
 } from '@volar/language-core';
 import type * as ts from 'typescript';
@@ -30,6 +32,7 @@ import {
 	transformDiagnostic,
 	transformDocumentSpan,
 	transformFileTextChanges,
+	transformNavigationTree,
 	transformSpan,
 	transformTextChange,
 	transformTextSpan,
@@ -109,10 +112,30 @@ export function createProxyLanguageService(languageService: ts.LanguageService) 
 function getNavigationTree(language: Language<string>, getNavigationTree: ts.LanguageService['getNavigationTree']): ts.LanguageService['getNavigationTree'] {
 	return filePath => {
 		const fileName = filePath.replace(windowsPathReg, '/');
-		const [serviceScript, targetScript] = getServiceScript(language, fileName);
-		if (serviceScript || targetScript?.associatedOnly) {
+		const [serviceScript, targetScript, sourceScript] = getServiceScript(language, fileName);
+		if (serviceScript) {
 			const tree = getNavigationTree(targetScript.id);
-			tree.childItems = undefined;
+			if (targetScript?.associatedOnly) {
+				tree.childItems = undefined;
+				return tree;
+			}
+			if (
+				fileName.endsWith('.js')
+				|| fileName.endsWith('.ts')
+				|| fileName.endsWith('.jsx')
+				|| fileName.endsWith('.tsx')
+				|| fileName.endsWith('.cjs')
+				|| fileName.endsWith('.cts')
+				|| fileName.endsWith('.mjs')
+				|| fileName.endsWith('.mts')
+			) {
+				tree.childItems = tree.childItems
+					?.map(item => transformNavigationTree(sourceScript, language, serviceScript, item, isSymbolsEnabled))
+					.filter(item => !!item);
+			}
+			else {
+				tree.childItems = undefined;
+			}
 			return tree;
 		}
 		else {
@@ -123,9 +146,37 @@ function getNavigationTree(language: Language<string>, getNavigationTree: ts.Lan
 function getOutliningSpans(language: Language<string>, getOutliningSpans: ts.LanguageService['getOutliningSpans']): ts.LanguageService['getOutliningSpans'] {
 	return filePath => {
 		const fileName = filePath.replace(windowsPathReg, '/');
-		const [serviceScript, targetScript] = getServiceScript(language, fileName);
-		if (serviceScript || targetScript?.associatedOnly) {
-			return [];
+		const [serviceScript, targetScript, sourceScript] = getServiceScript(language, fileName);
+		if (serviceScript) {
+			if (targetScript?.associatedOnly) {
+				return [];
+			}
+			if (
+				fileName.endsWith('.js')
+				|| fileName.endsWith('.ts')
+				|| fileName.endsWith('.jsx')
+				|| fileName.endsWith('.tsx')
+				|| fileName.endsWith('.cjs')
+				|| fileName.endsWith('.cts')
+				|| fileName.endsWith('.mjs')
+				|| fileName.endsWith('.mts')
+			) {
+				const spans = getOutliningSpans(targetScript.id);
+				return spans
+					.map(span => {
+						const textSpan = transformTextSpan(sourceScript, language, serviceScript, span.textSpan, isFoldingRangesEnabled)?.[1];
+						if (textSpan) {
+							return {
+								...span,
+								textSpan,
+							};
+						}
+					})
+					.filter(span => !!span);
+			}
+			else {
+				return [];
+			}
 		}
 		else {
 			return getOutliningSpans(fileName);
