@@ -1,114 +1,42 @@
-import { FileMap, Language, LanguagePlugin, createLanguage } from '@volar/language-core';
 import type * as ts from 'typescript';
-import { resolveFileLanguageId } from '../common';
 import { createProxyLanguageService } from '../node/proxyLanguageService';
-import { decorateLanguageServiceHost, searchExternalFiles } from '../node/decorateLanguageServiceHost';
+import { createLanguageCommon, isHasAlreadyDecoratedLanguageService, makeGetExternalFiles, projectExternalFileExtensions } from './languageServicePluginCommon';
+import type { createPluginCallbackSync } from './languageServicePluginCommon';
 
-export const externalFiles = new WeakMap<ts.server.Project, string[]>();
-export const projectExternalFileExtensions = new WeakMap<ts.server.Project, string[]>();
-export const decoratedLanguageServices = new WeakSet<ts.LanguageService>();
-export const decoratedLanguageServiceHosts = new WeakSet<ts.LanguageServiceHost>();
-
+/**
+ * Creates and returns a TS Service Plugin using Volar primitives.
+ *
+ * See https://github.com/microsoft/TypeScript/wiki/Writing-a-Language-Service-Plugin for
+ * more information.
+ */
 export function createLanguageServicePlugin(
-	create: (
-		ts: typeof import('typescript'),
-		info: ts.server.PluginCreateInfo
-	) => {
-		languagePlugins: LanguagePlugin<string>[],
-		setup?: (language: Language<string>) => void;
-	}
+	createPluginCallback: createPluginCallbackSync
 ): ts.server.PluginModuleFactory {
 	return modules => {
 		const { typescript: ts } = modules;
+
 		const pluginModule: ts.server.PluginModule = {
 			create(info) {
-				if (
-					!decoratedLanguageServices.has(info.languageService)
-					&& !decoratedLanguageServiceHosts.has(info.languageServiceHost)
-				) {
-					decoratedLanguageServices.add(info.languageService);
-					decoratedLanguageServiceHosts.add(info.languageServiceHost);
-
-					const { languagePlugins, setup } = create(ts, info);
-					const extensions = languagePlugins
+				if (!isHasAlreadyDecoratedLanguageService(info)) {
+					const createPluginResult = createPluginCallback(ts, info);
+					const extensions = createPluginResult.languagePlugins
 						.map(plugin => plugin.typescript?.extraFileExtensions.map(ext => '.' + ext.extension) ?? [])
 						.flat();
+
+					// TODO: this logic does not seem to appear in the async variant
+					// (createAsyncLanguageServicePlugin)... bug?
 					projectExternalFileExtensions.set(info.project, extensions);
-					const getScriptSnapshot = info.languageServiceHost.getScriptSnapshot.bind(info.languageServiceHost);
-					const language = createLanguage<string>(
-						[
-							...languagePlugins,
-							{ getLanguageId: resolveFileLanguageId },
-						],
-						new FileMap(ts.sys.useCaseSensitiveFileNames),
-						(fileName, _, shouldRegister) => {
-							let snapshot: ts.IScriptSnapshot | undefined;
-							if (shouldRegister) {
-								// We need to trigger registration of the script file with the project, see #250
-								snapshot = getScriptSnapshot(fileName);
-							}
-							else {
-								snapshot = getScriptInfo(fileName)?.getSnapshot();
-								if (!snapshot) {
-									// trigger projectService.getOrCreateScriptInfoNotOpenedByClient
-									info.project.getScriptVersion(fileName);
-									snapshot = getScriptInfo(fileName)?.getSnapshot();
-								}
-							}
-							if (snapshot) {
-								language.scripts.set(fileName, snapshot);
-							}
-							else {
-								language.scripts.delete(fileName);
-							}
-						}
-					);
 
 					const { proxy, initialize } = createProxyLanguageService(info.languageService);
 					info.languageService = proxy;
-					initialize(language);
-					decorateLanguageServiceHost(ts, language, info.languageServiceHost);
-					setup?.(language);
+
+					createLanguageCommon(createPluginResult, ts, info, initialize);
 				}
 
 				return info.languageService;
-
-				function getScriptInfo(fileName: string) {
-					// getSnapshot could be crashed if the file is too large
-					try {
-						return info.project.getScriptInfo(fileName);
-					} catch { }
-				}
 			},
-			getExternalFiles(project, updateLevel = 0) {
-				if (
-					updateLevel >= (1 satisfies ts.ProgramUpdateLevel.RootNamesAndUpdate)
-					|| !externalFiles.has(project)
-				) {
-					const oldFiles = externalFiles.get(project);
-					const extensions = projectExternalFileExtensions.get(project);
-					const newFiles = extensions?.length ? searchExternalFiles(ts, project, extensions) : [];
-					externalFiles.set(project, newFiles);
-					if (oldFiles && !arrayItemsEqual(oldFiles, newFiles)) {
-						project.refreshDiagnostics();
-					}
-				}
-				return externalFiles.get(project)!;
-			},
+			getExternalFiles: makeGetExternalFiles(ts),
 		};
 		return pluginModule;
 	};
-}
-
-export function arrayItemsEqual(a: string[], b: string[]) {
-	if (a.length !== b.length) {
-		return false;
-	}
-	const set = new Set(a);
-	for (const file of b) {
-		if (!set.has(file)) {
-			return false;
-		}
-	}
-	return true;
 }

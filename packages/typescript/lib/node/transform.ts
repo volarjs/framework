@@ -8,6 +8,12 @@ import { getServiceScript } from './utils';
 const transformedDiagnostics = new WeakMap<ts.Diagnostic, ts.Diagnostic | undefined>();
 const transformedSourceFile = new WeakSet<ts.SourceFile>();
 
+/**
+ * This file contains a number of facilities for transforming `ts.Diagnostic`s returned
+ * from the  base TypeScript LanguageService, which reference locations in generated
+ * TS code (e.g. the TypeScript codegen'd from the script portion of a .vue file) into locations
+ * in the script portion of the .vue file.
+ */
 export function transformCallHierarchyItem(
 	language: Language<string>,
 	item: ts.CallHierarchyItem,
